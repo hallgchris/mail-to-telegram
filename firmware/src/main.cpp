@@ -5,20 +5,14 @@
 
 #include "secrets.h"
 
-#define REED_PIN 26
-
-void handleInterrupt();
+const gpio_num_t REED_PIN = GPIO_NUM_26;
+const uint64_t REED_PIN_MASK = 0x04000000; // 2^26
 
 WiFiClientSecure secured_client;
 UniversalTelegramBot bot(BOT_TOKEN, secured_client);
 
-bool triggered = false;
-
-void setup()
+void configure_wifi()
 {
-  Serial.begin(115200);
-  Serial.println();
-
   // attempt to connect to Wifi network:
   Serial.print("Connecting to Wifi SSID ");
   Serial.print(WIFI_SSID);
@@ -42,22 +36,60 @@ void setup()
     now = time(nullptr);
   }
   Serial.println(now);
-
-  pinMode(REED_PIN, INPUT_PULLUP);
-  attachInterrupt(REED_PIN, handleInterrupt, FALLING);
 }
 
-void handleInterrupt()
+void print_wakeup_reason(const esp_sleep_wakeup_cause_t wakeup_reason)
 {
-  Serial.println("Interrupted!");
-  triggered = true;
-}
-
-void loop()
-{
-  if (triggered)
+  switch (wakeup_reason)
   {
-    bot.sendMessage(CHAT_ID, "We just got a letter!");
-    triggered = false;
+  case ESP_SLEEP_WAKEUP_EXT0:
+    Serial.println("Wakeup caused by external signal using RTC_IO");
+    break;
+  case ESP_SLEEP_WAKEUP_EXT1:
+    Serial.println("Wakeup caused by external signal using RTC_CNTL");
+    break;
+  case ESP_SLEEP_WAKEUP_TIMER:
+    Serial.println("Wakeup caused by timer");
+    break;
+  case ESP_SLEEP_WAKEUP_TOUCHPAD:
+    Serial.println("Wakeup caused by touchpad");
+    break;
+  case ESP_SLEEP_WAKEUP_ULP:
+    Serial.println("Wakeup caused by ULP program");
+    break;
+  default:
+    Serial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);
+    break;
   }
 }
+
+void setup()
+{
+  Serial.begin(115200);
+  Serial.println("Starting...");
+
+  const auto wakeup_reason = esp_sleep_get_wakeup_cause();
+  print_wakeup_reason(wakeup_reason);
+  switch (wakeup_reason)
+  {
+  case ESP_SLEEP_WAKEUP_TOUCHPAD:
+    configure_wifi();
+    bot.sendMessage(CHAT_ID, "Triggered by touchpad");
+    break;
+  case ESP_SLEEP_WAKEUP_EXT1:
+    configure_wifi();
+    bot.sendMessage(CHAT_ID, "Triggered by ext1");
+    break;
+  default:
+    break;
+  }
+
+  touchAttachInterrupt(T3, nullptr, 40);
+  esp_sleep_enable_touchpad_wakeup();
+
+  esp_sleep_enable_ext1_wakeup(REED_PIN_MASK, ESP_EXT1_WAKEUP_ALL_LOW);
+
+  esp_deep_sleep_start();
+}
+
+void loop() {}
