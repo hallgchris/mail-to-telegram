@@ -1,12 +1,18 @@
+#include <ArduinoJson.h>
+#include <UniversalTelegramBot.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <UniversalTelegramBot.h>
-#include <ArduinoJson.h>
 
 #include "secrets.h"
 
-const gpio_num_t REED_PIN = GPIO_NUM_26;
-const uint64_t REED_PIN_MASK = 0x04000000; // 2^26
+static const gpio_num_t REED_PIN = GPIO_NUM_26;
+static const uint64_t REED_PIN_MASK = 0x04000000; // 2^26
+
+static const uint8_t BAT_PIN = A0;
+
+static const gpio_num_t STATUS_PIN = GPIO_NUM_2; // ESP32 built-in LED
+
+static const float LOW_BATTERY_THRESHOLD = 1.2 * 3; // Volts, 3 cells at 1.2V
 
 WiFiClientSecure secured_client;
 UniversalTelegramBot bot(BOT_TOKEN, secured_client);
@@ -63,22 +69,40 @@ void print_wakeup_reason(const esp_sleep_wakeup_cause_t wakeup_reason)
   }
 }
 
+float read_battery_voltage()
+{
+  const int r1 = 100;
+  const int r2 = 100;
+  const float divider_factor = (float)r1 / (r1 + r2);
+  return (float)analogReadMilliVolts(BAT_PIN) / divider_factor / 1000;
+}
+
 void setup()
 {
+  // Indicate on status LED when ESP32 is not in deep sleep
+  pinMode(STATUS_PIN, OUTPUT);
+  digitalWrite(STATUS_PIN, HIGH);
+
   Serial.begin(115200);
   Serial.println("Starting...");
 
+  const float battery_voltage = read_battery_voltage();
+
   const auto wakeup_reason = esp_sleep_get_wakeup_cause();
   print_wakeup_reason(wakeup_reason);
+  String message;
   switch (wakeup_reason)
   {
   case ESP_SLEEP_WAKEUP_TOUCHPAD:
     configure_wifi();
-    bot.sendMessage(CHAT_ID, "Triggered by touchpad");
+    bot.sendMessage(CHAT_ID, "Battery voltage is " + String(battery_voltage) + " V");
     break;
   case ESP_SLEEP_WAKEUP_EXT1:
     configure_wifi();
-    bot.sendMessage(CHAT_ID, "Triggered by ext1");
+    message = "We just got a letter!";
+    if (battery_voltage <= LOW_BATTERY_THRESHOLD)
+      message += " Battery low (" + String(battery_voltage) + " V)";
+    bot.sendMessage(CHAT_ID, message);
     break;
   default:
     break;
