@@ -5,12 +5,14 @@
 
 #include "secrets.h"
 
-static const gpio_num_t REED_PIN = GPIO_NUM_26;
-static const uint64_t REED_PIN_MASK = 0x04000000; // 2^26
+static const gpio_num_t REED_PIN = GPIO_NUM_13;
+static const uint64_t REED_PIN_MASK = 0x2000; // 2^13
+
+static const uint8_t TOUCH_PIN = T3;
 
 static const uint8_t BAT_PIN = A0;
 
-static const gpio_num_t STATUS_PIN = GPIO_NUM_2; // ESP32 built-in LED
+static const gpio_num_t STATUS_PIN = GPIO_NUM_26; // ESP32 built-in LED
 
 static const float LOW_BATTERY_THRESHOLD = 1.2 * 3; // Volts, 3 cells at 1.2V
 
@@ -108,7 +110,7 @@ void setup()
     break;
   }
 
-  touchAttachInterrupt(T3, nullptr, 40);
+  touchAttachInterrupt(TOUCH_PIN, nullptr, 40);
   esp_sleep_enable_touchpad_wakeup();
 
   esp_sleep_enable_ext1_wakeup(REED_PIN_MASK, ESP_EXT1_WAKEUP_ALL_LOW);
